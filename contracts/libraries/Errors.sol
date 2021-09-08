@@ -6,6 +6,7 @@ pragma solidity 0.8.6;
 
 library Errors {
   string public constant INVALID_AUCTION_PARAMS = 'INVALID_AUCTION_PARAMS';
+  string public constant INVALID_ETHER_AMOUNT = 'INVALID_ETHER_AMOUNT';
   string public constant AUCTION_EXISTS = 'AUCTION_EXISTS';
   string public constant AUCTION_NOT_FINISHED = 'AUCTION_NOT_FINISHED';
   string public constant AUCTION_FINISHED = 'AUCTION_FINISHED';

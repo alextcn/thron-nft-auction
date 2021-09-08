@@ -46,12 +46,14 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
      * @param nftId The NFT ID of the token to auction.
      * @param auctioneer The creator.
      * @param startPrice The auction's starting price.
+     * @param priceToken The token of startPrice or 0 for ether.
      */
     event AuctionCreated(
         address indexed nft,
         uint256 indexed nftId,
         address indexed auctioneer,
-        uint256 startPrice
+        uint256 startPrice,
+        address priceToken
     );
 
     /**
@@ -61,12 +63,14 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
      * @param nftId The NFT ID of the token to auction.
      * @param author The author.
      * @param amount The royalty amount.
+     * @param amountToken The token of royalty amount or 0 for ether.
      */
     event RoyaltyPaid(
         address indexed nft,
         uint256 indexed nftId,
         address indexed author,
-        uint256 amount
+        uint256 amount,
+        address amountToken
     );
 
     /**
@@ -125,6 +129,7 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
      * @param nftId The NFT ID of the token bid on.
      * @param bidder The bidder address.
      * @param amount The amount used to bid.
+     * @param amountToken The token of amount bid or 0 for ether.
      * @param endTimestamp The new end timestamp.
      */
     event BidSubmitted(
@@ -132,6 +137,7 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
         uint256 indexed nftId,
         address indexed bidder,
         uint256 amount,
+        address amountToken,
         uint40 endTimestamp
     );
 
@@ -156,12 +162,14 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
      * @param nft The NFT address of the token changed.
      * @param nftId The NFT ID of the token changed.
      * @param startPrice The new reserve price.
+     * @param startPriceToken The token of start price or 0 for ether.
      * @param reservePriceChanger The caller of the method.
      */
     event ReservePriceChanged(
         address indexed nft,
         uint256 indexed nftId,
         uint256 startPrice,
+        address startPriceToken,
         address indexed reservePriceChanger
     );
 
@@ -263,28 +271,29 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
      *
      * @param nft Address of ERC721 NFT contract.
      * @param nftId Id of NFT token for the auction (must be approved for transfer by Auction smart-contract).
-     * @param startPrice Minimum price for the first bid.
+     * @param startPrice Minimum price for the first bid in ether or tokens depending on isEtherPrice value.
+     * @param isEtherPrice True to create auction in ether, false to create auction in payableToken.
      */
     function createAuction(
         address nft,
         uint256 nftId,
-        uint256 startPrice
+        uint256 startPrice,
+        bool isEtherPrice
     ) external nonReentrant whenNotPaused {
         require(nft == address(allowedNFT), Errors.NFT_CONTRACT_IS_NOT_ALLOWED);
         require(nftAuction2nftID2auction[nft][nftId].auctioneer == address(0), Errors.AUCTION_EXISTS);
-        require(
-            startPrice > 0,
-            Errors.INVALID_AUCTION_PARAMS
-        );
+        require(startPrice > 0, Errors.INVALID_AUCTION_PARAMS);
+        address token = isEtherPrice ? address(0) : address(payableToken);
         DataTypes.AuctionData memory auctionData = DataTypes.AuctionData(
             startPrice,
+            token,
             msg.sender,
             address(0),  // bidder
             0  // endTimestamp
         );
         nftAuction2nftID2auction[nft][nftId] = auctionData;
         IERC721(nft).transferFrom(msg.sender, address(this), nftId);  // maybe use safeTransferFrom
-        emit AuctionCreated(nft, nftId, msg.sender, startPrice);
+        emit AuctionCreated(nft, nftId, msg.sender, startPrice, token);
     }
 
     function stub() external pure returns(bytes4) {
@@ -304,6 +313,7 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
         address winner = auction.currentBidder;
         uint256 endTimestamp = auction.endTimestamp;
         uint256 payToAuctioneer = auction.currentBid;
+        address bidToken = auction.bidToken;
 
         require(block.timestamp > endTimestamp, Errors.AUCTION_NOT_FINISHED);
         require(winner != address(0), Errors.EMPTY_WINNER);  // auction does not exist or did not start, no bid
@@ -328,11 +338,19 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
         if (author != auctioneer) {
             uint256 payToAuthor = payToAuctioneer * authorRoyaltyNumerator / AUTHOR_ROYALTY_DENOMINATOR;
             payToAuctioneer -= payToAuthor;
-            emit RoyaltyPaid(nft, nftId, author, payToAuthor);
-            payableToken.safeTransfer(author, payToAuthor);
+            emit RoyaltyPaid(nft, nftId, author, payToAuthor, bidToken);
+            if (bidToken == address(0)) {
+                payable(author).transfer(payToAuthor);
+            } else {
+                payableToken.safeTransfer(author, payToAuthor);
+            }
         }
 
-        payableToken.safeTransfer(auctioneer, payToAuctioneer);
+        if (bidToken == address(0)) {
+            payable(auctioneer).transfer(payToAuctioneer);
+        } else {
+            payableToken.safeTransfer(auctioneer, payToAuctioneer);
+        }
         IERC721(nft).transferFrom(address(this), winner, nftId);  // maybe use safeTransfer (I don't want unclear onERC721Received stuff)
     }
 
@@ -344,12 +362,10 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
      *
      * @return The AuctionData containing all data related to a given NFT.
      */
-    function getAuctionData(address nft, uint256 nftId)
-    external
-    view
-    returns (DataTypes.AuctionData memory)
-    {
-        return nftAuction2nftID2auction[nft][nftId];
+    function getAuctionData(address nft, uint256 nftId) external view returns (DataTypes.AuctionData memory) {
+        DataTypes.AuctionData memory auction = nftAuction2nftID2auction[nft][nftId];
+        require(auction.auctioneer != address(0), Errors.AUCTION_NOT_EXISTS);
+        return auction;
     }
 
     /**
@@ -386,7 +402,7 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
      *
      * @param nft The NFT address of the token.
      * @param nftId The NFT ID of the token.
-     * @param startPrice New start price.
+     * @param startPrice New start price in tokens or ether depending on auction type.
      */
     function changeReservePrice(
         address nft,
@@ -411,15 +427,15 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
             Errors.INVALID_AUCTION_PARAMS
         );
         nftAuction2nftID2auction[nft][nftId].currentBid = startPrice;
-        emit ReservePriceChanged(nft, nftId, startPrice, msg.sender);
+        emit ReservePriceChanged(nft, nftId, startPrice, auction.bidToken, msg.sender);
     }
 
     /**
-     * @notice Place the bid.
+     * @notice Place the bid in tokens.
      *
      * @param nft The NFT address of the token.
      * @param nftId The NFT ID of the token.
-     * @param amount Bid amount.
+     * @param amount Bid amount in payable tokens.
      */
     function bid(
         address nft,
@@ -432,6 +448,10 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
         address currentBidder = auction.currentBidder;
         uint40 endTimestamp = auction.endTimestamp;
 
+        require(
+            auction.bidToken != address(0),
+            "CANT_BID_ETHER_AUCTION_BY_TOKENS" // TODO: move string to errors
+        );
         require(
             block.timestamp < endTimestamp || endTimestamp == 0,
             Errors.AUCTION_FINISHED
@@ -465,7 +485,66 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
             payableToken.safeTransferFrom(msg.sender, address(this), more);
         }
 
-        emit BidSubmitted(nft, nftId, msg.sender, amount, newEndTimestamp);
+        emit BidSubmitted(nft, nftId, msg.sender, amount, auction.bidToken, newEndTimestamp);
+    }
+
+    
+    /**
+     * @notice Place the bid in ether.
+     *
+     * @param nft The NFT address of the token.
+     * @param nftId The NFT ID of the token.
+     * @param amount Bid amount in ether.
+     */
+    function bidEther(
+        address nft,
+        uint256 nftId,
+        uint256 amount
+    ) external payable whenNotPaused nonReentrant {
+        DataTypes.AuctionData storage auction = nftAuction2nftID2auction[nft][nftId];
+        require(auction.auctioneer != address(0), Errors.AUCTION_NOT_EXISTS);
+        uint256 currentBid = auction.currentBid;
+        address currentBidder = auction.currentBidder;
+        uint40 endTimestamp = auction.endTimestamp;
+
+        require(
+            auction.bidToken == address(0),
+            "CANT_BID_TOKEN_AUCTION_BY_ETHER" // TODO: move string to errors
+        );
+        require(
+            block.timestamp < endTimestamp || endTimestamp == 0,
+            Errors.AUCTION_FINISHED
+        );
+
+        uint40 newEndTimestamp = auction.endTimestamp;
+        if (endTimestamp == 0) { // first bid
+            require(amount >= currentBid, Errors.SMALL_BID_AMOUNT);  // >= startPrice stored in currentBid
+            newEndTimestamp = uint40(block.timestamp) + auctionDuration;
+            auction.endTimestamp = newEndTimestamp;
+        } else {
+            require(amount >= (MINIMUM_STEP_DENOMINATOR + minPriceStepNumerator) * currentBid / MINIMUM_STEP_DENOMINATOR,
+                Errors.SMALL_BID_AMOUNT);  // >= step over the previous bid
+//            if (overtimeWindow > 0 && block.timestamp > endTimestamp - overtimeWindow) {
+            if (block.timestamp > endTimestamp - overtimeWindow) {
+                newEndTimestamp = uint40(block.timestamp) + overtimeWindow;
+                auction.endTimestamp = newEndTimestamp;
+            }
+        }
+
+        auction.currentBidder = msg.sender;
+        auction.currentBid = amount;
+
+        if (currentBidder != msg.sender) {
+            require(msg.value == amount);
+            if (currentBidder != address(0)) {
+                payable(currentBidder).transfer(currentBid);
+            }
+        } else {
+            uint256 more = amount - currentBid;
+            require(msg.value == more);
+        }
+
+        emit BidSubmitted(nft, nftId, msg.sender, amount, address(0), newEndTimestamp);
     }
 
     function getRevision() external pure returns(uint256) {

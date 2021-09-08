@@ -1,9 +1,10 @@
 import brownie
 
-from nft_auction_backend.web3proxy.const import ADDRESS_ZERO
+# from nft_auction_backend.web3proxy.const import ADDRESS_ZERO
 from brownie.convert import Fixed
 from brownie import Auction
 
+ADDRESS_ZERO = '0x0000000000000000000000000000000000000000'
 
 def test_revision(auction):
     rev = auction.getRevision()
@@ -36,7 +37,7 @@ def test_incorrect_nfthub(auction, throne_nft, throne_coin, admin, users, chain)
     start_price = Fixed('1 ether')
     with brownie.reverts("NFT_CONTRACT_IS_NOT_ALLOWED"):
         some_wrong_address = users[-1]
-        auction.createAuction(some_wrong_address, nft_id, start_price, {'from': minter})
+        auction.createAuction(some_wrong_address, nft_id, start_price, False, {'from': minter})
 
 
 def test_incorrect_startprice(auction, throne_nft, throne_coin, admin, users, chain):
@@ -57,7 +58,7 @@ def test_incorrect_startprice(auction, throne_nft, throne_coin, admin, users, ch
     # create auction
     start_price = Fixed('0 ether')
     with brownie.reverts("INVALID_AUCTION_PARAMS"):
-        auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+        auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 
 
 def test_normal_flow(auction, throne_nft, throne_coin, admin, users, chain):
@@ -77,9 +78,9 @@ def test_normal_flow(auction, throne_nft, throne_coin, admin, users, chain):
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve for bid = reserve price
     bid_price = start_price
@@ -89,7 +90,7 @@ def test_normal_flow(auction, throne_nft, throne_coin, admin, users, chain):
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -116,9 +117,9 @@ def test_claim_empty_winner(auction, throne_nft, throne_coin, admin, users, chai
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     with brownie.reverts('EMPTY_WINNER'):
         auction.claimWonNFT(throne_nft.address, nft_id, {'from': claimer})
@@ -142,9 +143,9 @@ def test_bid_by_auctioneer(auction, throne_nft, throne_coin, admin, users, chain
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
-    assert tx.events['AuctionCreated'] == {
-        'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter, 'startPrice': start_price}
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
+    assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve for bid = reserve price
     bid_price = start_price
@@ -154,7 +155,7 @@ def test_bid_by_auctioneer(auction, throne_nft, throne_coin, admin, users, chain
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -181,7 +182,7 @@ def test_normal_flow_claim_by_winner(auction, throne_nft, throne_coin, admin, us
 
     # create auction
     start_price = Fixed('1 ether')
-    auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 
     # approve for bid = reserve price
     bid_price = Fixed('1 ether')
@@ -191,7 +192,7 @@ def test_normal_flow_claim_by_winner(auction, throne_nft, throne_coin, admin, us
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -218,7 +219,7 @@ def test_normal_flow_claim_by_admin(auction, throne_nft, throne_coin, admin, use
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 
     # approve for bid = reserve price
     bid_price = Fixed('1 ether')
@@ -228,7 +229,7 @@ def test_normal_flow_claim_by_admin(auction, throne_nft, throne_coin, admin, use
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -256,7 +257,7 @@ def test_normal_flow_claim_by_auctioneer(auction, throne_nft, throne_coin, admin
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 
     # approve for bid = reserve price
     bid_price = Fixed('1 ether')
@@ -266,7 +267,7 @@ def test_normal_flow_claim_by_auctioneer(auction, throne_nft, throne_coin, admin
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -294,7 +295,7 @@ def test_normal_flow_claim_by_other_user(auction, throne_nft, throne_coin, admin
 
     # create auction
     start_price = Fixed('1 ether')
-    auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 
     # approve for bid = reserve price
     bid_price = Fixed('1 ether')
@@ -304,7 +305,7 @@ def test_normal_flow_claim_by_other_user(auction, throne_nft, throne_coin, admin
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -331,9 +332,9 @@ def test_end_timestamp_correct_on_start(auction, throne_nft, throne_coin, admin,
 
     # create auction
     start_price = Fixed('1 ether')
-    auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     assert end_timestamp == 0
 
     # approve for bid = reserve price
@@ -363,9 +364,9 @@ def test_end_timestamp_correct_after_overtime(auction, throne_nft, throne_coin, 
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     assert end_timestamp == 0
 
     # approve for bid = reserve price
@@ -377,7 +378,7 @@ def test_end_timestamp_correct_after_overtime(auction, throne_nft, throne_coin, 
     assert tx.events['BidSubmitted']['endTimestamp'] == chain[-1]['timestamp'] + auction.auctionDuration()
 
     # travel to the future (but not finished)
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() - 10)
     chain.mine()
 
@@ -404,9 +405,9 @@ def test_failed_to_place_bid_on_finished(auction, throne_nft, throne_coin, admin
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     assert end_timestamp == 0
 
     # approve for bid = reserve price
@@ -418,7 +419,7 @@ def test_failed_to_place_bid_on_finished(auction, throne_nft, throne_coin, admin
     assert tx.events['BidSubmitted']['endTimestamp'] == chain[-1]['timestamp'] + auction.auctionDuration()
 
     # travel to the future (make finished)
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -445,7 +446,7 @@ def test_change_reserve_price(auction, throne_nft, throne_coin, admin, users, ch
 
     # create auction
     start_price1 = Fixed('0.9 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, False, {'from': minter})
     assert tx.events['AuctionCreated']['startPrice'] == start_price1
 
     # change reserve price
@@ -461,7 +462,7 @@ def test_change_reserve_price(auction, throne_nft, throne_coin, admin, users, ch
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -489,7 +490,7 @@ def test_change_reserve_price_after_bid(auction, throne_nft, throne_coin, admin,
 
     # create auction
     start_price1 = Fixed('0.9 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, False, {'from': minter})
     assert tx.events['AuctionCreated']['startPrice'] == start_price1
 
     # approve for bid = reserve price
@@ -523,7 +524,7 @@ def test_change_reserve_price_wrong_value(auction, throne_nft, throne_coin, admi
 
     # create auction
     start_price1 = Fixed('0.9 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, False, {'from': minter})
     assert tx.events['AuctionCreated']['startPrice'] == start_price1
 
     # change reserve price
@@ -550,7 +551,7 @@ def test_change_reserve_price_by_admin(auction, throne_nft, throne_coin, admin, 
 
     # create auction
     start_price1 = Fixed('0.9 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, False, {'from': minter})
     assert tx.events['AuctionCreated']['startPrice'] == start_price1
 
     # change reserve price by admin works
@@ -577,7 +578,7 @@ def test_change_reserve_price_by_other_user(auction, throne_nft, throne_coin, ad
 
     # create auction
     start_price1 = Fixed('0.9 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price1, False, {'from': minter})
     assert tx.events['AuctionCreated']['startPrice'] == start_price1
 
     # change reserve price by admin works
@@ -602,9 +603,9 @@ def test_change_reserve_price_by_other_user(auction, throne_nft, throne_coin, ad
 #
 #     # create auction
 #     start_price = Fixed('1 ether')
-#     tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+#     tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 #     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-#                                            'startPrice': start_price}
+#                                            'startPrice': start_price, 'priceToken': throne_coin.address}
 #
 #     # approve for bid = reserve price
 #     bid_price = start_price
@@ -650,9 +651,9 @@ def test_2_bids(auction, throne_nft, throne_coin, admin, users, chain):
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve for bid = reserve price
     bid_price = start_price
@@ -669,7 +670,7 @@ def test_2_bids(auction, throne_nft, throne_coin, admin, users, chain):
     auction.bid(throne_nft.address, nft_id, bid2_price, {'from': bidder2})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -697,9 +698,9 @@ def test_2_bids_2nd_low(auction, throne_nft, throne_coin, admin, users, chain):
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve for bid = reserve price
     bid_price = start_price
@@ -735,9 +736,9 @@ def test_2nd_bids_already_finished(auction, throne_nft, throne_coin, admin, user
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve for bid = reserve price
     bid_price = start_price
@@ -747,7 +748,7 @@ def test_2nd_bids_already_finished(auction, throne_nft, throne_coin, admin, user
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -778,9 +779,9 @@ def test_10_bids_from_the_same_user(auction, throne_nft, throne_coin, admin, use
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     bid_price = start_price
     for i in range(10):
@@ -793,7 +794,7 @@ def test_10_bids_from_the_same_user(auction, throne_nft, throne_coin, admin, use
         auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -819,9 +820,9 @@ def test_10_bids_from_the_different_users(auction, throne_nft, throne_coin, admi
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     bid_price = start_price
     for i in range(10):
@@ -835,7 +836,7 @@ def test_10_bids_from_the_different_users(auction, throne_nft, throne_coin, admi
         auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -864,9 +865,9 @@ def test_royalty(auction, throne_nft, throne_coin, admin, users, chain):
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve for bid = reserve price
     bid_price = start_price
@@ -876,7 +877,7 @@ def test_royalty(auction, throne_nft, throne_coin, admin, users, chain):
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder1})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -892,9 +893,9 @@ def test_royalty(auction, throne_nft, throne_coin, admin, users, chain):
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': bidder1})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': bidder1})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': bidder1,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve for bid = reserve price
     bid_price = start_price
@@ -904,7 +905,7 @@ def test_royalty(auction, throne_nft, throne_coin, admin, users, chain):
     auction.bid(throne_nft.address, nft_id, bid_price, {'from': bidder2})
 
     # travel to the future
-    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[3]
+    end_timestamp = auction.getAuctionData(throne_nft.address, nft_id)[4]
     chain.sleep(end_timestamp - chain.time() + 10)
     chain.mine()
 
@@ -938,9 +939,9 @@ def test_failed_low_bid(auction, throne_nft, throne_coin, admin, users, chain):
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve
     bid_price = start_price - Fixed(1)  # small
@@ -968,12 +969,12 @@ def test_create_auction_twice_fails(auction, throne_nft, throne_coin, admin, use
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     with brownie.reverts("AUCTION_EXISTS"):
-        auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+        auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
 
 
 def test_cancel_auction_started_auction_failed(auction, throne_nft, throne_coin, admin, users, chain):
@@ -993,9 +994,9 @@ def test_cancel_auction_started_auction_failed(auction, throne_nft, throne_coin,
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve
     bid_price = start_price
@@ -1023,9 +1024,9 @@ def test_cancel_auction(auction, throne_nft, throne_coin, admin, users, chain):
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     tx = auction.cancelAuction(throne_nft.address, nft_id, {'from': minter})
     assert tx.events['AuctionCanceled'] == {'nft': throne_nft.address, 'nftId': nft_id, 'canceler': minter}
@@ -1048,9 +1049,9 @@ def test_cancel_auction_after_change_reserve_price(auction, throne_nft, throne_c
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     start_price2 = Fixed('2 ether')
     tx = auction.changeReservePrice(throne_nft.address, nft_id, start_price2, {'from': minter})
@@ -1077,9 +1078,9 @@ def test_cancel_auction_by_admin(auction, throne_nft, throne_coin, admin, users,
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     tx = auction.cancelAuction(throne_nft.address, nft_id, {'from': admin})
     assert tx.events['AuctionCanceled'] == {'nft': throne_nft.address, 'nftId': nft_id, 'canceler': admin}
@@ -1102,9 +1103,9 @@ def test_cancel_auction_by_someone_else(auction, throne_nft, throne_coin, admin,
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     with brownie.reverts('NO_RIGHTS'):
         auction.cancelAuction(throne_nft.address, nft_id, {'from': users[-1]})
@@ -1127,9 +1128,9 @@ def test_cancel_auction_after_bid_failed(auction, throne_nft, throne_coin, admin
 
     # create auction
     start_price = Fixed('1 ether')
-    tx = auction.createAuction(throne_nft.address, nft_id, start_price, {'from': minter})
+    tx = auction.createAuction(throne_nft.address, nft_id, start_price, False, {'from': minter})
     assert tx.events['AuctionCreated'] == {'nft': throne_nft.address, 'nftId': nft_id, 'auctioneer': minter,
-                                           'startPrice': start_price}
+                                           'startPrice': start_price, 'priceToken': throne_coin.address}
 
     # approve for bid = reserve price
     bid_price = start_price
