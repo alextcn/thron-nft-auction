@@ -33,9 +33,9 @@ contract Auction is AdminPausableUpgradeSafe, ReentrancyGuard, Initializable {
     uint40 public overtimeWindow;
     uint40 public auctionDuration;
     uint40 constant MAX_OVERTIME_WINDOW = 365 days;
-    uint40 constant MIN_OVERTIME_WINDOW = 60;
+    uint40 constant MIN_OVERTIME_WINDOW = 1;
     uint40 constant MAX_AUCTION_DURATION = 365 days;
-    uint40 constant MIN_AUCTION_DURATION = 1 minutes;
+    uint40 constant MIN_AUCTION_DURATION = 1;
     IERC20 public payableToken;
     IERC721 public allowedNFT;
 
